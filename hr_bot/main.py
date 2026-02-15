@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # ---------- CONFIG ----------
 # ВАЖНО: токен храните в переменных окружения, а не в коде.
 # На сервере: export BOT_TOKEN="ВАШ_НОВЫЙ_ТОКЕН"
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8519563776:AAFxQP5iV5UAGamhIXnQybdYz2F_U8bhkRw").strip()
 
 # Можно тоже вынести в env, но не обязательно
 HR_GROUP_ID = int(os.getenv("HR_GROUP_ID", "-5009067957"))
@@ -106,6 +106,10 @@ def _lang(context) -> str:
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Диалог отменён.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
+
+
+async def get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"chat_id = {update.effective_chat.id}")
 
 
 # ---------- FLOW ----------
@@ -298,6 +302,8 @@ async def finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("id", get_id))
 
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
