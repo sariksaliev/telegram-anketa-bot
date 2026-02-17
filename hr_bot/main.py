@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8519563776:AAFxQP5iV5UAGamhIXnQybdYz2F_U8bhkRw").strip()
 
 # Можно тоже вынести в env, но не обязательно
-HR_GROUP_ID = int(os.getenv("HR_GROUP_ID", "-5009067957"))
+HR_GROUP_ID = int(os.getenv("HR_GROUP_ID", "-1003784655570"))
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN не задан. Установите переменную окружения BOT_TOKEN.")
