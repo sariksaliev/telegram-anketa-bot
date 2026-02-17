@@ -274,22 +274,31 @@ async def finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"{k}: {v}\n"
 
     try:
+        # Логируем ID группы и данные, которые пытаемся отправить
+        logger.info(f"Attempting to send data to HR group with chat ID {HR_GROUP_ID}")
+        logger.info(f"Attempting to send photo with ID {context.user_data['Фото']} and caption: {text[:1024]}")
+
         await context.bot.send_message(
             chat_id=HR_GROUP_ID,
             text="✅ Получена новая анкета. Отправляю фото..."
         )
 
+        # Логируем успешную отправку сообщения
+        logger.info("Sending photo to HR group...")
         await context.bot.send_photo(
             chat_id=HR_GROUP_ID,
             photo=context.user_data["Фото"],
             caption=text[:1024]
         )
 
+        # Логируем отправку документов
         for file_id in context.user_data.get("Документы", []):
+            logger.info(f"Sending document with file_id: {file_id}")
             await context.bot.send_document(chat_id=HR_GROUP_ID, document=file_id)
 
-    except Exception:
-        logger.exception("Не удалось отправить анкету в HR_GROUP_ID")
+    except Exception as e:
+        # Логируем исключение и ошибку отправки
+        logger.exception(f"Failed to send the form to HR group. Error: {e}")
         await update.message.reply_text(Q[_lang(context)]["send_photo_error"], reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
