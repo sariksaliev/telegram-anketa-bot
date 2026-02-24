@@ -24,11 +24,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------- CONFIG ----------
-# ВАЖНО: токен храните в переменных окружения, а не в коде.
-# На сервере: export BOT_TOKEN="ВАШ_НОВЫЙ_ТОКЕН"
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8519563776:AAFxQP5iV5UAGamhIXnQybdYz2F_U8bhkRw").strip()
+# Обязательно задайте переменные окружения на сервере:
+# export BOT_TOKEN="ВАШ_НОВЫЙ_ТОКЕН"
+# export HR_GROUP_ID="-100XXXXXXXXXXXX"
 
-# Можно тоже вынести в env, но не обязательно
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 HR_GROUP_ID = int(os.getenv("HR_GROUP_ID", "-1003784655570"))
 
 if not BOT_TOKEN:
@@ -68,7 +68,7 @@ Q = {
         "extra": "📝 Дополнительная информация (по желанию)\nМожно нажать «Пропустить»",
         "phone_error": "❗ Используйте кнопку для отправки номера телефона",
         "done": "✅ Анкета отправлена",
-        "send_photo_error": "❗ Не удалось отправить анкету в HR-группу. Проверьте ID группы и права бота.",
+        "send_photo_error": "❗ Не удалось отправить анкету в HR-группу. Проверьте ID группы, права бота и тип файла.",
     },
     "uz": {
         "start": "Tilni tanlang:",
@@ -93,7 +93,7 @@ Q = {
         "extra": "📝 Qo‘shimcha ma’lumot (ixtiyoriy)\n«Пропустить» ni bosish mumkin",
         "phone_error": "❗ Telefon raqamni faqat tugma orqali yuboring",
         "done": "✅ Anketa yuborildi",
-        "send_photo_error": "❗ HR guruhiga yuborib bo‘lmadi. Guruh ID va bot huquqlarini tekshiring.",
+        "send_photo_error": "❗ HR guruhiga yuborib bo‘lmadi. Guruh ID, bot huquqlari va fayl turini tekshiring.",
     }
 }
 
@@ -140,22 +140,26 @@ async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     2) update.message.document (если отправили картинку как файл)
     """
     file_id = None
+    file_kind = None  # "photo" | "document"
 
     # Фото обычным способом
     if update.message.photo:
         file_id = update.message.photo[-1].file_id
+        file_kind = "photo"
 
     # Фото как файл (document), но это изображение
     elif update.message.document:
         mime = update.message.document.mime_type or ""
         if mime.startswith("image/"):
             file_id = update.message.document.file_id
+            file_kind = "document"
 
     if not file_id:
         await update.message.reply_text("❗ Отправьте фотографию (как фото) или изображение файлом.")
         return PHOTO
 
     context.user_data["Фото"] = file_id
+    context.user_data["ФотоТип"] = file_kind
 
     kb = [["⏭ Пропустить"]]
     await update.message.reply_text(
@@ -270,35 +274,50 @@ async def finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = f"📋 АНКЕТА №{FORM_COUNTER}\n\n"
     for k, v in context.user_data.items():
-        if k not in ["lang", "Фото", "Документы"]:
+        if k not in ["lang", "Фото", "ФотоТип", "Документы"]:
             text += f"{k}: {v}\n"
 
     try:
-        # Логируем ID группы и данные, которые пытаемся отправить
         logger.info(f"Attempting to send data to HR group with chat ID {HR_GROUP_ID}")
-        logger.info(f"Attempting to send photo with ID {context.user_data['Фото']} and caption: {text[:1024]}")
+
+        photo_file_id = context.user_data.get("Фото")
+        photo_type = context.user_data.get("ФотоТип", "photo")
+
+        logger.info(
+            f"Attempting to send media. file_id={photo_file_id}, "
+            f"photo_type={photo_type}, caption_len={len(text[:1024])}"
+        )
 
         await context.bot.send_message(
             chat_id=HR_GROUP_ID,
-            text="✅ Получена новая анкета. Отправляю фото..."
+            text="✅ Получена новая анкета. Отправляю фото/файл..."
         )
 
-        # Логируем успешную отправку сообщения
-        logger.info("Sending photo to HR group...")
-        await context.bot.send_photo(
-            chat_id=HR_GROUP_ID,
-            photo=context.user_data["Фото"],
-            caption=text[:1024]
-        )
+        # Если пользователь отправил картинку как документ -> отправляем как document
+        if photo_type == "document":
+            logger.info("Image was uploaded as document:image -> sending via send_document")
+            await context.bot.send_document(
+                chat_id=HR_GROUP_ID,
+                document=photo_file_id,
+                caption=text[:1024]
+            )
+        else:
+            logger.info("Image was uploaded as normal photo -> sending via send_photo")
+            await context.bot.send_photo(
+                chat_id=HR_GROUP_ID,
+                photo=photo_file_id,
+                caption=text[:1024]
+            )
 
-        # Логируем отправку документов
+        # Отправка дополнительных документов
         for file_id in context.user_data.get("Документы", []):
             logger.info(f"Sending document with file_id: {file_id}")
             await context.bot.send_document(chat_id=HR_GROUP_ID, document=file_id)
 
     except Exception as e:
-        # Логируем исключение и ошибку отправки
         logger.exception(f"Failed to send the form to HR group. Error: {e}")
+        # Временно можно показать точную ошибку для отладки:
+        # await update.message.reply_text(f"❗ Ошибка отправки анкеты: {e}", reply_markup=ReplyKeyboardRemove())
         await update.message.reply_text(Q[_lang(context)]["send_photo_error"], reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
@@ -319,7 +338,7 @@ def main():
         states={
             LANG: [MessageHandler(filters.TEXT, set_lang)],
 
-            # ВАЖНО: принимает и PHOTO, и изображение-файл (document:image)
+            # Принимаем и обычное фото, и изображение-файл (document:image)
             PHOTO: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, photo)],
 
             DOCS: [MessageHandler(filters.ALL, docs)],
